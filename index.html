@@ -14,10 +14,10 @@
     <section class="login-card">
       <div class="logo">🎮</div>
       <h1>Login to the testing panel</h1>
-      <p>Admins create users and manage tests.</p>
+      
       <form id="loginForm">
         <label>Username<input id="loginInput" type="text" value="admin.mainadmin" placeholder="username" /></label>
-        <label>Password<input id="passwordInput" type="password" value="admin123" placeholder="password" /></label>
+        <label>Password<input id="passwordInput" type="password" value="admin123" placeholder="password" /></label><button type="button" id="togglePassword" class="show-pass-btn">Show Password</button>
         <p id="loginError" class="error"></p>
         <button type="submit" class="primary-btn">Enter Dashboard</button>
       </form>
@@ -163,6 +163,9 @@
     </div>
   </div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

@@ -49,6 +49,10 @@ const seed = {
 
 let db = JSON.parse(localStorage.getItem("testerPortalData") || "null") || seed;
 let currentId = Number(localStorage.getItem("testerPortalCurrentId")) || null;
+let remoteRef = null;
+let remoteReady = false;
+let remoteRender = false;
+let lastRemoteSave = "";
 
 function migrate() {
   db.roles ||= defaultRoles;
@@ -78,7 +82,85 @@ function migrate() {
 
 migrate();
 
-const save = () => localStorage.setItem("testerPortalData", JSON.stringify(db));
+function save() {
+  if (!db) return;
+
+  const payload = JSON.stringify(db);
+  localStorage.setItem("testerPortalData", payload);
+
+  if (remoteRef && remoteReady && !remoteRender && payload !== lastRemoteSave) {
+    lastRemoteSave = payload;
+    remoteRef.set(db).catch(error => {
+      console.warn("Firebase save failed:", error);
+    });
+  }
+}
+
+function firebaseConfigured() {
+  const config = window.firebaseConfig || {};
+  return Boolean(
+    window.firebase &&
+    window.firebase.database &&
+    config.apiKey &&
+    !String(config.apiKey).includes("PASTE_") &&
+    config.databaseURL &&
+    !String(config.databaseURL).includes("PASTE_")
+  );
+}
+
+function startSharedSync() {
+  if (!firebaseConfigured()) {
+    console.info("Shared mode is off. Fill firebase-config.js to sync between browsers.");
+    return;
+  }
+
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(window.firebaseConfig);
+    }
+
+    remoteRef = firebase.database().ref("testerPortalData");
+
+    remoteRef.on("value", snapshot => {
+      remoteRender = true;
+
+      if (snapshot.exists()) {
+        db = snapshot.val();
+        migrate();
+        lastRemoteSave = JSON.stringify(db);
+        localStorage.setItem("testerPortalData", lastRemoteSave);
+      } else {
+        db = JSON.parse(localStorage.getItem("testerPortalData") || "null") || seed;
+        migrate();
+        lastRemoteSave = JSON.stringify(db);
+        remoteRef.set(db);
+      }
+
+      if (currentId && !user()) {
+        currentId = null;
+        localStorage.removeItem("testerPortalCurrentId");
+        $("dashboardPage").classList.add("hidden");
+        $("loginPage").classList.remove("hidden");
+      }
+
+      fillRoleControls();
+
+      if (currentId && user()) {
+        $("loginPage").classList.add("hidden");
+        $("dashboardPage").classList.remove("hidden");
+        render();
+      }
+
+      remoteRender = false;
+      remoteReady = true;
+    });
+  } catch (error) {
+    console.warn("Shared mode failed. Falling back to browser-only storage:", error);
+    remoteRef = null;
+    remoteReady = false;
+  }
+}
+
 const user = () => db.users.find(u => u.id === currentId);
 const isAdmin = () => user()?.role === "Admin";
 const isMainAdmin = () => isAdmin() && String(user()?.login || "").endsWith(".mainadmin");
@@ -567,9 +649,17 @@ function renderUsers() {
       <input value="${esc(u.login)}" data-edit="login" data-id="${u.id}">
       <input value="${esc(u.displayName || "")}" data-edit="displayName" data-id="${u.id}">
       <input value="${esc(u.password)}" data-edit="password" data-id="${u.id}">
-      <select data-edit="role" data-id="${u.id}">
-        ${db.roles.map(r => `<option ${r === u.role ? "selected" : ""}>${esc(r)}</option>`).join("")}
-      </select>
+      <div class="role-chip-group">
+        ${db.roles.map(r => `
+          <button
+            type="button"
+            class="role-choice compact ${r === u.role ? "selected" : ""}"
+            data-role-chip="true"
+            data-new-role="${esc(r)}"
+            data-id="${u.id}"
+          >${esc(r)}</button>
+        `).join("")}
+      </div>
       <div class="points-controls">
         <button data-points="-25" data-id="${u.id}">-</button>
         <b>${u.points}</b>
@@ -698,4 +788,35 @@ if (currentId && user()) {
   render();
 } else {
   save();
+}
+
+startSharedSync();
+
+document.addEventListener("click", event => {
+  const roleBtn = event.target.closest("[data-role-chip=\"true\"]");
+  if (roleBtn) {
+    const userId = Number(roleBtn.dataset.id);
+    const role = roleBtn.dataset.newRole;
+    const user = db.users.find(u => u.id === userId);
+    if (user) {
+      user.role = role;
+      save();
+      fillRoleControls();
+      render();
+    }
+  }
+});
+
+const togglePasswordBtn = document.getElementById("togglePassword");
+if (togglePasswordBtn) {
+  togglePasswordBtn.addEventListener("click", () => {
+    const input = document.getElementById("passwordInput");
+    if (input.type === "password") {
+      input.type = "text";
+      togglePasswordBtn.textContent = "Hide Password";
+    } else {
+      input.type = "password";
+      togglePasswordBtn.textContent = "Show Password";
+    }
+  });
 }

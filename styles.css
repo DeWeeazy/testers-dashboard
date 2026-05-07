@@ -793,7 +793,6 @@ body.light-theme .dashboard-test-column {
 .test-desc {
   display: -webkit-box;
   overflow: hidden;
-  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   min-height: 40px;
@@ -954,4 +953,32 @@ body.light-theme .modal {
   .create-user-form {
     grid-template-columns: 1fr;
   }
+}
+
+.show-pass-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.06);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.role-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.role-choice.compact {
+  min-width: unset;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.login-card p {
+  display: none;
 }
