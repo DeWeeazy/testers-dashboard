@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Game Tester Portal</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="dark-theme">
+  <div class="bg-glow glow-one"></div><div class="bg-glow glow-two"></div>
+  <button id="themeBtn" class="theme-btn">☀ Theme</button>
+
+  <main id="loginPage" class="login-page">
+    <section class="login-card">
+      <div class="logo">🎮</div>
+      <h1>Login to the testing panel</h1>
+      <p>Admins create users and manage tests.</p>
+      <form id="loginForm">
+        <label>Username<input id="loginInput" type="text" value="admin.mainadmin" placeholder="username" /></label>
+        <label>Password<input id="passwordInput" type="password" value="admin123" placeholder="password" /></label>
+        <p id="loginError" class="error"></p>
+        <button type="submit" class="primary-btn">Enter Dashboard</button>
+      </form>
+      
+    </section>
+  </main>
+
+  <main id="dashboardPage" class="dashboard hidden">
+    <header class="topbar panel">
+      <div><p class="muted">Welcome back</p><h1 id="currentName">Tester</h1></div>
+      <nav class="tabs">
+        <button data-page="dashboard" class="tab active">Dashboard</button>
+        <button data-page="schedule" class="tab">7-Day Table</button>
+        <button data-page="tests" class="tab">Tests</button>
+        <button data-page="admin" class="tab admin-only">Admin</button>
+      </nav>
+      <div class="top-actions">
+        <span id="currentRole" class="pill purple">Role</span><span id="currentPoints" class="pill pink">0 pts</span>
+        <button id="logoutBtn" class="small-btn">Logout</button>
+      </div>
+    </header>
+
+    <section id="page-dashboard" class="page active-page">
+      <section class="stats-grid">
+        <article class="stat-card panel"><span>🏆</span><p>Points</p><h2 id="statPoints">0</h2></article>
+        <article class="stat-card panel"><span>📋</span><p>Available Tests</p><h2 id="statTests">0</h2></article>
+        <article class="stat-card panel"><span>✅</span><p>My Active</p><h2 id="statStarted">0</h2></article>
+        <article class="stat-card panel"><span>♻️</span><p>Archived</p><h2 id="statArchived">0</h2></article>
+      </section>
+      <section class="main-grid">
+        <div><h2 class="section-title">Upcoming & Available</h2><div id="testsGrid" class="tests-grid"></div></div>
+        <aside class="panel leaderboard"><h2>Leaderboard</h2><div id="leaderboardList"></div></aside>
+      </section>
+    </section>
+
+    <section id="page-schedule" class="page">
+      <div class="section-head"><div><h2>7-Day Test Table</h2><p class="muted">Hourly slots from 00:00 to 00:00. Tests appear on their scheduled day and hour.</p></div></div>
+      <div id="scheduleTable" class="schedule-wrap panel"></div>
+    </section>
+
+    <section id="page-tests" class="page">
+      <div class="section-head"><div><h2>Tests</h2><p class="muted">Start tests opened by admins. End tests when finished.</p></div></div>
+      <div id="allTestsList" class="tests-list"></div>
+    </section>
+
+    <section id="page-admin" class="page admin-page hidden">
+      <section class="admin-board test-editor panel">
+        <div class="editor-head">
+          <div>
+            <p class="eyebrow">Test setup</p>
+            <h2>Create / Edit Test</h2>
+            <p class="muted">Set the session details, points, and which roles can attend.</p>
+          </div>
+          <div class="editor-badge">Admin only</div>
+        </div>
+
+        <form id="testForm" class="test-form">
+          <input id="testId" type="hidden" />
+
+          <label class="field wide">
+            <span>Test name</span>
+            <input id="testName" type="text" placeholder="Combat Balance Test" required />
+          </label>
+
+          <label class="field">
+            <span>Date</span>
+            <input id="testDate" type="date" required />
+          </label>
+
+          <label class="field">
+            <span>Start time</span>
+            <input id="testTime" type="time" required />
+          </label>
+
+          <label class="field">
+            <span>Duration</span>
+            <input id="testDuration" type="number" min="15" step="15" placeholder="60" required />
+          </label>
+
+          <label class="field">
+            <span>Points</span>
+            <input id="testPoints" type="number" min="0" placeholder="75" required />
+          </label>
+
+          <div class="field roles-field">
+            <span>Who can attend by role</span>
+            <div id="testRoles" class="choice-grid"></div>
+          </div>
+
+          <div class="field attendees-field">
+            <span>Allowed testers</span>
+            <div id="testAttendees" class="choice-grid choice-grid-tall"></div>
+            <small>Leave empty if everyone with an allowed role can attend.</small>
+          </div>
+
+          <label class="field description-field">
+            <span>Description</span>
+            <textarea id="testDescription" placeholder="What should testers do and report?"></textarea>
+          </label>
+
+          <div class="form-actions compact-actions">
+            <button type="submit" class="primary-btn compact-btn">Save Test</button>
+            <button type="button" id="clearTestForm" class="small-btn compact-btn secondary-btn">Clear</button>
+          </div>
+        </form>
+
+        <p class="help-text">Click chips to select multiple roles or testers. Leave testers empty to allow all matching roles.</p>
+      </section>
+
+      <section class="admin-board panel">
+        <h2>Manage Tests</h2>
+        <div id="adminTestsTable" class="admin-tests-table"></div>
+      </section>
+
+      <section class="admin-board panel main-admin-only">
+        <h2>Role Names</h2>
+        <p class="muted">Main admins can rename roles or add new ones. Login must end with <b>.mainadmin</b>.</p>
+        <form id="createRoleForm" class="create-role-form">
+          <input id="newRoleName" type="text" placeholder="new role name" />
+          <button type="submit" class="primary-btn">+ Add Role</button>
+        </form>
+        <div id="rolesTable" class="roles-table"></div>
+      </section>
+
+      <section class="admin-board panel">
+        <h2>Manage Users</h2>
+        <form id="createUserForm" class="create-user-form">
+          <input id="newLogin" type="text" placeholder="username" />
+          <input id="newDisplayName" type="text" placeholder="display name" />
+          <input id="newPassword" type="text" placeholder="password" />
+          <input id="newRole" type="hidden" /><div id="newRoleChoices" class="role-picker"></div>
+          <button type="submit" class="primary-btn">+ Create User</button>
+        </form>
+        <div class="user-table"><div class="table-head"><span>Username</span><span>Display</span><span>Password</span><span>Role</span><span>Points</span><span>Remove</span></div><div id="usersTable"></div></div>
+      </section>
+    </section>
+  </main>
+
+  <div id="testModal" class="modal hidden">
+    <div class="modal-card panel">
+      <button id="closeModal" class="modal-close">×</button>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
