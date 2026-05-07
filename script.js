@@ -53,6 +53,9 @@ let remoteRef = null;
 let remoteReady = false;
 let remoteRender = false;
 let lastRemoteSave = "";
+let activePage = "dashboard";
+let lastRenderedPage = "";
+let lastScheduleSignature = "";
 
 function migrate() {
   db.roles ||= defaultRoles;
@@ -261,9 +264,11 @@ document.querySelectorAll(".tab").forEach(btn => {
 
 function showPage(page) {
   if (page === "admin" && !isAdmin()) page = "dashboard";
+  activePage = page;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.page === page));
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active-page"));
   $(`page-${page}`).classList.add("active-page");
+  render();
 }
 
 function render() {
@@ -283,30 +288,42 @@ function render() {
   document.querySelectorAll(".main-admin-only").forEach(el => el.classList.toggle("hidden", !isMainAdmin()));
   $("page-admin").classList.toggle("hidden", !isAdmin());
 
-  renderTestsGrid();
-  renderAllTests();
-  renderSchedule();
-  renderLeaderboard();
+  if (!isAdmin() && activePage === "admin") {
+    showPage("dashboard");
+    return;
+  }
 
-  if (isAdmin()) {
+  renderCurrentPage();
+}
+
+function renderCurrentPage() {
+  if (activePage === "dashboard") {
+    renderTestsGrid();
+    renderLeaderboard();
+  }
+
+  if (activePage === "tests") {
+    renderAllTests();
+  }
+
+  if (activePage === "schedule") {
+    renderSchedule();
+  }
+
+  if (activePage === "admin" && isAdmin()) {
     renderUsers();
     renderAdminTests();
     renderRoles();
-  } else if ($("page-admin").classList.contains("active-page")) {
-    showPage("dashboard");
   }
 
-  save();
+  lastRenderedPage = activePage;
 }
 
-function testCard(t) {
+function testActionButton(t) {
   const u = user();
   const status = db.sessions[u.id]?.[t.id];
   const locked = !t.open || !canAttend(u, t) || t.archived;
-  const attendeeText = t.attendees?.length
-    ? t.attendees.map(id => db.users.find(u => u.id === id)).filter(Boolean).map(u => u.displayName || u.login).join(", ")
-    : "Any matching tester";
-  const button = isAdmin()
+  const label = isAdmin()
     ? (t.open ? "★ Open - Close" : "☆ Closed - Open")
     : status === "active"
       ? "End Test"
@@ -316,6 +333,17 @@ function testCard(t) {
           ? (t.archived ? "Archived" : !canAttend(u, t) ? "Wrong Role" : "Waiting for Admin")
           : `Start Test +${t.points}`;
 
+  const disabled = status === "done" || (t.archived && !isAdmin()) ? "disabled" : "";
+  return `<button class="start-btn ${status || ""}" data-test="${t.id}" ${disabled}>${label}</button>`;
+}
+
+function testCard(t) {
+  const u = user();
+  const status = db.sessions[u.id]?.[t.id];
+  const locked = !t.open || !canAttend(u, t) || t.archived;
+  const attendeeText = t.attendees?.length
+    ? t.attendees.map(id => db.users.find(u => u.id === id)).filter(Boolean).map(u => u.displayName || u.login).join(", ")
+    : "Any matching tester";
   return `
     <article class="test-card panel ${locked ? "locked" : ""} ${t.archived ? "archived" : ""}" data-open-info="${t.id}">
       <div class="test-graphic">
@@ -328,7 +356,7 @@ function testCard(t) {
         <span>${esc(t.roles.join(", "))}</span>
         <span class="tester-meta">${esc(attendeeText)}</span>
       </div>
-      <button class="start-btn ${status || ""}" data-test="${t.id}" ${status === "done" || (t.archived && !isAdmin()) ? "disabled" : ""}>${button}</button>
+      ${testActionButton(t)}
     </article>`;
 }
 
@@ -368,7 +396,7 @@ function renderAllTests() {
       </div>
       <div>${esc(t.date)} ${esc(t.time)}</div>
       <div>${t.points} pts · ${t.open ? "Open" : "Closed"}${t.archived ? " · Archived" : ""}</div>
-      <div>${testCard(t).match(/<button[\s\S]*<\/button>/)[0]}</div>
+      <div>${testActionButton(t)}</div>
     </div>`).join("");
   bindTestUI();
 }
@@ -389,6 +417,11 @@ function bindTestUI() {
   });
 }
 
+function commit() {
+  save();
+  render();
+}
+
 function handleTest(id) {
   const t = db.tests.find(x => x.id === id);
   const u = user();
@@ -396,7 +429,7 @@ function handleTest(id) {
 
   if (isAdmin()) {
     t.open = !t.open;
-    render();
+    commit();
     return;
   }
 
@@ -411,7 +444,7 @@ function handleTest(id) {
     u.points += t.points;
   }
 
-  render();
+  commit();
 }
 
 function openTestModal(id) {
@@ -447,6 +480,25 @@ $("testModal").onclick = e => {
 
 function renderSchedule() {
   const days = Array.from({ length: 7 }, (_, i) => addDaysISO(i));
+  const scheduleTests = db.tests
+    .filter(t => !t.archived && days.includes(t.date))
+    .sort(sortByDate);
+  const signature = JSON.stringify(scheduleTests.map(t => [t.id, t.name, t.date, t.time, t.points, t.open]));
+
+  if (signature === lastScheduleSignature && $("scheduleTable").innerHTML) {
+    return;
+  }
+
+  lastScheduleSignature = signature;
+
+  const bySlot = new Map();
+  scheduleTests.forEach(t => {
+    const hour = Number(String(t.time || "00:00").slice(0, 2));
+    const key = `${t.date}-${hour}`;
+    if (!bySlot.has(key)) bySlot.set(key, []);
+    bySlot.get(key).push(t);
+  });
+
   const head = `<tr><th>Time</th>${days.map(d => `<th>${d}</th>`).join("")}</tr>`;
   const rows = Array.from({ length: 24 }, (_, h) => {
     const from = `${String(h).padStart(2, "0")}:00`;
@@ -454,13 +506,13 @@ function renderSchedule() {
     return `
       <tr>
         <td>${from} - ${to}</td>
-        ${days.map(day => `
-          <td>
-            ${db.tests
-              .filter(t => !t.archived && t.date === day && Number(t.time.slice(0, 2)) === h)
-              .map(t => `<span class="slot-test" data-open-info="${t.id}"><b>${esc(t.name)}</b><br>${t.time} · ${t.points} pts · ${t.open ? "Open" : "Closed"}</span>`)
-              .join("")}
-          </td>`).join("")}
+        ${days.map(day => {
+          const tests = bySlot.get(`${day}-${h}`) || [];
+          return `
+            <td>
+              ${tests.map(t => `<span class="slot-test" data-open-info="${t.id}"><b>${esc(t.name)}</b><br>${t.time} · ${t.points} pts · ${t.open ? "Open" : "Closed"}</span>`).join("")}
+            </td>`;
+        }).join("")}
       </tr>`;
   }).join("");
 
@@ -513,7 +565,7 @@ $("testForm").onsubmit = e => {
   e.target.reset();
   $("testId").value = "";
   fillRoleControls();
-  render();
+  commit();
 };
 
 $("clearTestForm").onclick = () => {
@@ -545,7 +597,7 @@ function renderAdminTests() {
     e.stopPropagation();
     const t = db.tests.find(x => x.id === Number(b.dataset.adminOpen));
     t.open = !t.open;
-    render();
+    commit();
   });
 
   document.querySelectorAll("[data-edit-test]").forEach(b => b.onclick = e => {
@@ -561,13 +613,13 @@ function renderAdminTests() {
   document.querySelectorAll("[data-archive-test]").forEach(b => b.onclick = e => {
     e.stopPropagation();
     db.tests.find(x => x.id === Number(b.dataset.archiveTest)).archived = true;
-    render();
+    commit();
   });
 
   document.querySelectorAll("[data-restore-test]").forEach(b => b.onclick = e => {
     e.stopPropagation();
     db.tests.find(x => x.id === Number(b.dataset.restoreTest)).archived = false;
-    render();
+    commit();
   });
 
   document.querySelectorAll("[data-hard-delete-test]").forEach(b => b.onclick = e => {
@@ -606,14 +658,14 @@ function duplicateTest(id) {
     open: false,
     archived: false
   });
-  render();
+  commit();
 }
 
 function hardDeleteTest(id) {
   if (confirm("Permanently remove this test? Use Delete if you want restore option.")) {
     db.tests = db.tests.filter(t => t.id !== id);
     Object.values(db.sessions).forEach(s => delete s[id]);
-    render();
+    commit();
   }
 }
 
@@ -640,7 +692,7 @@ $("createUserForm").onsubmit = e => {
 
   e.target.reset();
   fillRoleControls();
-  render();
+  commit();
 };
 
 function renderUsers() {
@@ -675,7 +727,7 @@ function renderUsers() {
     b.onclick = () => {
       const u = db.users.find(x => x.id === Number(b.dataset.id));
       u.points = Math.max(0, u.points + Number(b.dataset.points));
-      render();
+      commit();
     };
   });
   document.querySelectorAll("[data-remove]").forEach(b => {
@@ -694,7 +746,7 @@ function editUser(id, key, value) {
 
   u[key] = value.trim() || (key === "displayName" ? u.login : u[key]);
   fillRoleControls();
-  render();
+  commit();
 }
 
 function removeUser(id) {
@@ -709,7 +761,7 @@ function removeUser(id) {
     t.attendees = (t.attendees || []).filter(userId => userId !== id);
   });
   fillRoleControls();
-  render();
+  commit();
 }
 
 $("createRoleForm").onsubmit = e => {
@@ -725,7 +777,7 @@ $("createRoleForm").onsubmit = e => {
   db.roles.splice(Math.max(0, db.roles.length - 1), 0, name);
   $("newRoleName").value = "";
   fillRoleControls();
-  render();
+  commit();
 };
 
 function renderRoles() {
@@ -762,7 +814,7 @@ function renameRole(oldName, newName) {
     t.roles = t.roles.map(r => r === oldName ? newName : r);
   });
   fillRoleControls();
-  render();
+  commit();
 }
 
 function removeRole(role) {
@@ -779,7 +831,7 @@ function removeRole(role) {
     if (!t.roles.length) t.roles = [fallback];
   });
   fillRoleControls();
-  render();
+  commit();
 }
 
 if (currentId && user()) {
@@ -800,23 +852,16 @@ document.addEventListener("click", event => {
     const user = db.users.find(u => u.id === userId);
     if (user) {
       user.role = role;
-      save();
       fillRoleControls();
-      render();
+      commit();
     }
   }
 });
 
-const togglePasswordBtn = document.getElementById("togglePassword");
-if (togglePasswordBtn) {
-  togglePasswordBtn.addEventListener("click", () => {
+const togglePasswordBox = document.getElementById("togglePassword");
+if (togglePasswordBox) {
+  togglePasswordBox.addEventListener("change", () => {
     const input = document.getElementById("passwordInput");
-    if (input.type === "password") {
-      input.type = "text";
-      togglePasswordBtn.textContent = "Hide Password";
-    } else {
-      input.type = "password";
-      togglePasswordBtn.textContent = "Show Password";
-    }
+    input.type = togglePasswordBox.checked ? "text" : "password";
   });
 }
